@@ -3,9 +3,18 @@ import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const key = Config.BASE_URL;
+console.log(key)
 
 const api = axios.create({
   baseURL: key,
+  headers: {
+    Accept: '*/*',
+  },
+});
+
+api.interceptors.response.use(response => {
+  console.log('Response:', response.status, response.config.url, response.data);
+  return response;
 });
 
 api.interceptors.request.use(

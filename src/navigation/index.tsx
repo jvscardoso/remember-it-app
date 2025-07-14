@@ -6,6 +6,8 @@ import { ActivityIndicator, View } from 'react-native';
 import BottomTabNavigator from '../components/BottomTabs';
 import { useAuth } from '../hooks/useAuth.tsx';
 import RegisterScreen from '../screens/Register';
+import TaskDetails from '../screens/Tasks/TasksDetails';
+import TaskFormScreen from '../screens/Tasks/TasksForm';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,7 +26,11 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          <Stack.Screen name="Main" component={BottomTabNavigator} />
+          <>
+            <Stack.Screen name="Main" component={BottomTabNavigator} />
+            <Stack.Screen name="TaskDetails" component={TaskDetails} />
+            <Stack.Screen name="TaskForm" component={TaskFormScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
