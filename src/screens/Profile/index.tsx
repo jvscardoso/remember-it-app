@@ -1,10 +1,14 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Button } from 'react-native';
+import { useAuth } from '../../hooks/useAuth.tsx';
 
 export default function Profile() {
+  const { user, signOut } = useAuth();
+
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>Perfil do Usuário</Text>
+      <Text>Bem-vindo, {user?.name}</Text>
+      <Button title="Sair" onPress={signOut} />
     </View>
   );
 }

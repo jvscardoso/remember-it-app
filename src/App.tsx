@@ -1,12 +1,20 @@
+import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppNavigator from './navigation';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider } from './context/AuthContext.tsx';
+import Config from 'react-native-config';
+import Toast from 'react-native-toast-message';
 
-function App() {
+export default function App() {
+  console.log('chave api:', Config.BASE_URL);
+
   return (
-    <SafeAreaProvider>
-      <AppNavigator />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <AppNavigator />
+        <Toast />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
-export default App;

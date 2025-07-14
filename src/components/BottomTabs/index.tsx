@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-// import Icon from 'react-native-vector-icons/Ionicons';
+import { List, User } from 'lucide-react-native';
 import Tasks from '../../screens/Tasks';
 import Profile from '../../screens/Profile';
 
@@ -8,25 +8,27 @@ const Tab = createBottomTabNavigator();
 
 export default function BottomTabNavigator() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#6200ee',
+        tabBarInactiveTintColor: '#999',
+      }}
+    >
       <Tab.Screen
         name="Tasks"
         component={Tasks}
         options={{
-          // tabBarIcon: ({ color, size }) => (
-          //   <Icon name="list" color={color} size={size} />
-          // ),
-          tabBarLabel: 'Listagem',
+          tabBarLabel: 'Tarefas',
+          tabBarIcon: ({ color, size }) => <List color={color} size={size} />,
         }}
       />
       <Tab.Screen
         name="Profile"
         component={Profile}
         options={{
-          // tabBarIcon: ({ color, size }) => (
-          //   <Icon name="person" color={color} size={size} />
-          // ),
           tabBarLabel: 'Perfil',
+          tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
         }}
       />
     </Tab.Navigator>
