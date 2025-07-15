@@ -18,6 +18,7 @@ interface FilterModalProps {
 
 const statusOptions = [
   { value: 'ALL', label: 'Todas' },
+  { value: TaskStatus.CANCELED, label: 'Canceladas' },
   { value: TaskStatus.PENDING, label: 'Pendentes' },
   { value: TaskStatus.IN_PROGRESS, label: 'Em Progresso' },
   { value: TaskStatus.COMPLETED, label: 'Concluídas' },
