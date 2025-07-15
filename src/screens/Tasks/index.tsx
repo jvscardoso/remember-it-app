@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import api from '../../services/api';
 import TaskItem from '../../components/TaskItem';
 import { TaskPriority, TaskStatus, TasksTypes } from '../../types/Task';
 import Header from '../../components/Header';
+import FilterModal from '../../components/FilterModal';
 import { useNetworkSync } from '../../hooks/useNetwork.ts';
 import Toast from 'react-native-toast-message';
 
@@ -32,79 +33,110 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const navigation = useNavigation<any>();
   const { isOnline } = useNetworkSync();
 
   const fabScale = new Animated.Value(1);
-  const syncOpacity = new Animated.Value(0);
+  const syncOpacity = useRef(new Animated.Value(0)).current;
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const db = await getDBConnection();
+  const fetchTasks = useCallback(
+    async (statusFilter?: string) => {
+      setLoading(true);
+      try {
+        const db = await getDBConnection();
+        const filterStatus = statusFilter || selectedStatus;
 
-      if (isOnline) {
-        const response = await api.get('/tasks');
-        const apiTasks: TasksTypes[] = response.data;
-
-        for (const t of apiTasks) {
-          const existingTask = await getTaskById(db, t.id);
-
-          const status = Object.values(TaskStatus).includes(
-            t.status as TaskStatus,
-          )
-            ? (t.status as TaskStatus)
-            : TaskStatus.PENDING;
-
-          const priority = Object.values(TaskPriority).includes(
-            t.priority as TaskPriority,
-          )
-            ? (t.priority as TaskPriority)
-            : TaskPriority.MEDIUM;
-
-          const taskData = {
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            status,
-            priority,
-            dueDate: t.dueDate,
-            createdAt: t.createdAt,
-            updatedAt: t.updatedAt,
-            isSynced: 1 as const,
-          };
-
-          if (existingTask) {
-            await updateTask(db, t.id, taskData);
-          } else {
-            await createTask(db, taskData);
+        if (isOnline) {
+          let apiUrl = '/tasks';
+          if (filterStatus !== 'ALL') {
+            apiUrl += `?status=${filterStatus}`;
           }
-        }
 
-        setTasks(apiTasks);
-      } else {
-        const localTasks = await getTasks(db);
-        setTasks(localTasks as TasksTypes[]);
+          const response = await api.get(apiUrl);
+          const apiTasks: TasksTypes[] = response.data;
+
+          for (const t of apiTasks) {
+            const existingTask = await getTaskById(db, t.id);
+
+            const status = Object.values(TaskStatus).includes(
+              t.status as TaskStatus,
+            )
+              ? (t.status as TaskStatus)
+              : TaskStatus.PENDING;
+
+            const priority = Object.values(TaskPriority).includes(
+              t.priority as TaskPriority,
+            )
+              ? (t.priority as TaskPriority)
+              : TaskPriority.MEDIUM;
+
+            const taskData = {
+              id: t.id,
+              title: t.title,
+              description: t.description,
+              status,
+              priority,
+              dueDate: t.dueDate,
+              createdAt: t.createdAt,
+              updatedAt: t.updatedAt,
+              isSynced: 1 as const,
+            };
+
+            if (existingTask) {
+              await updateTask(db, t.id, taskData);
+            } else {
+              await createTask(db, taskData);
+            }
+          }
+
+          setTasks(apiTasks);
+        } else {
+          const localTasks = await getTasks(db);
+          const filteredTasks =
+            filterStatus === 'ALL'
+              ? localTasks
+              : localTasks.filter(task => task.status === filterStatus);
+
+          setTasks(filteredTasks as TasksTypes[]);
+        }
+      } catch (error) {
+        Toast.show({
+          type: 'error',
+          text1: 'Erro ao carregar tarefas',
+          text2: 'Verifique sua conexão e tente novamente',
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (error) {
-      console.warn('Erro ao buscar tarefas:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Erro ao carregar tarefas',
-        text2: 'Verifique sua conexão e tente novamente'
-      });
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [isOnline]);
+    },
+    [isOnline, selectedStatus],
+  );
+
+  const handleStatusChange = useCallback(
+    (status: string) => {
+      setSelectedStatus(status);
+      fetchTasks(status);
+    },
+    [fetchTasks],
+  );
+
+  const handleFilterPress = () => {
+    setFilterModalVisible(true);
+  };
+
+  const handleFilterClose = () => {
+    setFilterModalVisible(false);
+  };
 
   const syncTasks = useCallback(async () => {
     if (!isOnline) {
       Alert.alert(
         'Sem conexão',
         'Conecte-se à internet para sincronizar suas tarefas.',
-        [{ text: 'OK', style: 'default' }]
+        [{ text: 'OK', style: 'default' }],
       );
       return;
     }
@@ -124,7 +156,7 @@ export default function Tasks() {
         Toast.show({
           type: 'info',
           text1: 'Tudo sincronizado!',
-          text2: 'Suas tarefas estão atualizadas'
+          text2: 'Suas tarefas estão atualizadas',
         });
         return;
       }
@@ -147,14 +179,14 @@ export default function Tasks() {
       Toast.show({
         type: 'success',
         text1: 'Sincronização concluída!',
-        text2: `${unsyncedTasks.length} tarefa(s) sincronizada(s)`
+        text2: `${unsyncedTasks.length} tarefa(s) sincronizada(s)`,
       });
       await fetchTasks();
     } catch (error) {
       Alert.alert(
         'Erro na sincronização',
         'Não foi possível sincronizar suas tarefas. Tente novamente.',
-        [{ text: 'OK', style: 'default' }]
+        [{ text: 'OK', style: 'default' }],
       );
     } finally {
       setSyncing(false);
@@ -208,9 +240,15 @@ export default function Tasks() {
       <View style={styles.emptyIconContainer}>
         <Text style={styles.emptyIcon}>📝</Text>
       </View>
-      <Text style={styles.emptyTitle}>Nenhuma tarefa ainda</Text>
+      <Text style={styles.emptyTitle}>
+        {selectedStatus === 'ALL'
+          ? 'Nenhuma tarefa ainda'
+          : 'Nenhuma tarefa encontrada'}
+      </Text>
       <Text style={styles.emptySubtitle}>
-        Comece criando sua primeira tarefa tocando no botão +
+        {selectedStatus === 'ALL'
+          ? 'Comece criando sua primeira tarefa tocando no botão +'
+          : 'Tente alterar o filtro ou criar uma nova tarefa'}
       </Text>
     </View>
   );
@@ -222,15 +260,19 @@ export default function Tasks() {
     </View>
   );
 
-  const getTaskStats = () => {
-    const completed = tasks.filter(t => t.status === 'COMPLETED').length;
-    const pending = tasks.filter(t => t.status === 'PENDING').length;
-    const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+  const getFilteredTaskStats = () => {
+    const completed = tasks.filter(
+      t => t.status === TaskStatus.COMPLETED,
+    ).length;
+    const pending = tasks.filter(t => t.status === TaskStatus.PENDING).length;
+    const inProgress = tasks.filter(
+      t => t.status === TaskStatus.IN_PROGRESS,
+    ).length;
 
     return { completed, pending, inProgress, total: tasks.length };
   };
 
-  const stats = getTaskStats();
+  const stats = getFilteredTaskStats();
 
   return (
     <View style={styles.container}>
@@ -239,24 +281,40 @@ export default function Tasks() {
         description={isOnline ? 'Online' : 'Offline'}
         networkStatus={isOnline}
         onSync={syncTasks}
+        onFilterPress={handleFilterPress}
+      />
+
+      <FilterModal
+        visible={filterModalVisible}
+        selectedStatus={selectedStatus}
+        onStatusChange={handleStatusChange}
+        onClose={handleFilterClose}
       />
 
       {!loading && tasks.length > 0 && (
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{stats.total}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statLabel}>
+              {selectedStatus === 'ALL' ? 'Total' : 'Filtradas'}
+            </Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: '#10B981' }]}>{stats.completed}</Text>
+            <Text style={[styles.statNumber, { color: '#10B981' }]}>
+              {stats.completed}
+            </Text>
             <Text style={styles.statLabel}>Concluídas</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: '#3B82F6' }]}>{stats.inProgress}</Text>
+            <Text style={[styles.statNumber, { color: '#3B82F6' }]}>
+              {stats.inProgress}
+            </Text>
             <Text style={styles.statLabel}>Em Progresso</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: '#8B5CF6' }]}>{stats.pending}</Text>
+            <Text style={[styles.statNumber, { color: '#8B5CF6' }]}>
+              {stats.pending}
+            </Text>
             <Text style={styles.statLabel}>Pendentes</Text>
           </View>
         </View>

@@ -1,14 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { ArrowLeft, RefreshCw } from 'lucide-react-native';
+import { ArrowLeft, RefreshCw, Search } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
 type HeaderProps = {
   title: string;
   description?: string;
   showBackButton?: boolean;
-  networkStatus?: boolean; // online ou offline
-  onSync?: () => void; // função para sincronizar
+  networkStatus?: boolean;
+  onSync?: () => void;
+  onFilterPress?: () => void;
 };
 
 export default function Header({
@@ -17,6 +18,7 @@ export default function Header({
   showBackButton = false,
   networkStatus,
   onSync,
+  onFilterPress,
 }: HeaderProps) {
   const navigation = useNavigation();
 
@@ -37,6 +39,10 @@ export default function Header({
           <Text style={styles.description}>{description}</Text>
         ) : null}
       </View>
+
+      <TouchableOpacity onPress={onFilterPress} style={styles.syncButton}>
+        <Search size={22} color="#007AFF" />
+      </TouchableOpacity>
 
       {networkStatus && onSync && (
         <TouchableOpacity onPress={onSync} style={styles.syncButton}>
