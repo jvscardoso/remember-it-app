@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
   ActivityIndicator,
-  TouchableOpacity,
   Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { Pencil, Trash2 } from 'lucide-react-native';
 
 import Header from '../../../components/Header';
 import api from '../../../services/api';
-import { TasksTypes } from '../../../types/Task';
+import { TaskStatus, TasksTypes } from '../../../types/Task';
+import {
+  getDBConnection,
+  getTaskById,
+  updateTask,
+} from '../../../database/taskRepository';
+import { useNetworkSync } from '../../../hooks/useNetwork';
 
 type RouteParams = {
   TaskDetails: { id: string };
@@ -25,12 +31,21 @@ export default function TaskDetails() {
 
   const [task, setTask] = useState<TasksTypes | null>(null);
   const [loading, setLoading] = useState(true);
+  const { isOnline } = useNetworkSync();
 
   useEffect(() => {
     async function loadTask() {
       try {
-        const response = await api.get(`/tasks/${id}`);
-        setTask(response.data);
+        if (isOnline) {
+          const response = await api.get(`/tasks/${id}`);
+          setTask(response.data);
+        } else {
+          const db = await getDBConnection();
+          const localTask = await getTaskById(db, id);
+          if (localTask) {
+            setTask(localTask as TasksTypes);
+          }
+        }
       } catch (error) {
         console.warn('Erro ao buscar tarefa:', error);
       } finally {
@@ -39,7 +54,7 @@ export default function TaskDetails() {
     }
 
     loadTask();
-  }, [id]);
+  }, [id, isOnline]);
 
   const handleEdit = () => {
     if (task) {
@@ -60,7 +75,19 @@ export default function TaskDetails() {
 
   const handleDelete = async () => {
     try {
-      await api.delete(`/tasks/${id}`);
+      if (isOnline) {
+        await api.delete(`/tasks/${id}`);
+        const db = await getDBConnection();
+        await updateTask(db, id, { status: TaskStatus.CANCELED, isSynced: 1 });
+      } else {
+        const db = await getDBConnection();
+        await updateTask(db, id, {
+          status: TaskStatus.CANCELED,
+          isSynced: 0,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
       navigation.goBack();
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível excluir a tarefa.');
@@ -87,7 +114,7 @@ export default function TaskDetails() {
     <View style={styles.container}>
       <Header
         title="Detalhes da Tarefa"
-        description="Informações completas"
+        description={isOnline ? 'Online' : 'Offline'}
         showBackButton
       />
 

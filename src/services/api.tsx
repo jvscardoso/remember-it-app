@@ -9,11 +9,11 @@ const api = axios.create({
   baseURL: key,
   headers: {
     Accept: '*/*',
+    'Cache-Control': 'no-cache',
   },
 });
 
 api.interceptors.response.use(response => {
-  console.log('Response:', response.status, response.config.url, response.data);
   return response;
 });
 

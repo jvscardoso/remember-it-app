@@ -9,8 +9,10 @@ import {
 } from 'react-native';
 
 import Toast from 'react-native-toast-message';
-import { TasksTypes } from '../../types/Task.ts';
-import api from '../../services/api.tsx';
+import { TaskStatus, TasksTypes } from '../../types/Task';
+import api from '../../services/api';
+import { getDBConnection, updateTask } from '../../database/taskRepository';
+import { useNetworkSync } from '../../hooks/useNetwork';
 
 type Props = {
   task: TasksTypes;
@@ -19,10 +21,20 @@ type Props = {
 
 export default function TaskItem({ task, onTaskCompleted }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
+  const { isOnline } = useNetworkSync();
 
   async function handleCompleteTask() {
     try {
-      await api.patch(`/tasks/${task.id}`, { status: 'COMPLETED' });
+      if (isOnline) {
+        await api.patch(`/tasks/${task.id}`, { status: 'COMPLETED' });
+      } else {
+        const db = await getDBConnection();
+        await updateTask(db, task.id, {
+          status: TaskStatus.COMPLETED,
+          isSynced: 0,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       Toast.show({ type: 'success', text1: 'Tarefa concluída com sucesso!' });
       onTaskCompleted?.();
     } catch (error) {

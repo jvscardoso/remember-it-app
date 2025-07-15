@@ -8,14 +8,27 @@ import {
   Platform,
 } from 'react-native';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
-import api from '../../services/api.tsx';
 import Toast from 'react-native-toast-message';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { TasksTypes, TaskPriority, TaskStatus } from '../../types/Task.ts';
 import RNPickerSelect from 'react-native-picker-select';
+import { TaskPriority, TaskStatus } from '../../types/Task';
+import {
+  getDBConnection,
+  createTask,
+  updateTask,
+} from '../../database/taskRepository';
+import api from '../../services/api';
+import { useNetworkSync } from '../../hooks/useNetwork.ts';
 
 type Props = {
-  initialData?: TasksTypes;
+  initialData?: {
+    id: string;
+    title: string;
+    description?: string;
+    status: TaskStatus;
+    priority: TaskPriority;
+    dueDate?: string | null;
+  };
   onSuccess?: () => void;
 };
 
@@ -28,6 +41,7 @@ type FormData = {
 };
 
 export default function TaskForm({ initialData, onSuccess }: Props) {
+  const { isOnline } = useNetworkSync();
   const {
     control,
     handleSubmit,
@@ -57,19 +71,47 @@ export default function TaskForm({ initialData, onSuccess }: Props) {
     }
 
     try {
-      if (initialData) {
-        await api.patch(`/tasks/${initialData.id}`, data);
-        Toast.show({
-          type: 'success',
-          text1: 'Tarefa atualizada com sucesso',
-        });
+      const db = await getDBConnection();
+
+      if (isOnline) {
+        if (initialData) {
+          await api.patch(`/tasks/${initialData.id}`, data);
+          await updateTask(db, initialData.id, {
+            ...data,
+            isSynced: 1,
+          });
+          Toast.show({ type: 'success', text1: 'Tarefa atualizada (online)' });
+        } else {
+          const response = await api.post('/tasks', data);
+          const createdTask = response.data;
+          await createTask(db, {
+            title: createdTask.title,
+            description: createdTask.description,
+            status: createdTask.status,
+            priority: createdTask.priority,
+            dueDate: createdTask.dueDate,
+            id: '',
+          });
+          await updateTask(db, createdTask.id, { isSynced: 1 });
+          Toast.show({ type: 'success', text1: 'Tarefa criada (online)' });
+        }
       } else {
-        await api.post('/tasks', data);
-        Toast.show({
-          type: 'success',
-          text1: 'Tarefa criada com sucesso',
-        });
+        if (initialData) {
+          await updateTask(db, initialData.id, {
+            ...data,
+          });
+          Toast.show({ type: 'success', text1: 'Tarefa atualizada (offline)' });
+        } else {
+          await createTask(db, {
+            ...data,
+            status: data.status ?? TaskStatus.PENDING,
+            priority: data.priority ?? TaskPriority.MEDIUM,
+            id: '',
+          });
+          Toast.show({ type: 'success', text1: 'Tarefa criada (offline)' });
+        }
       }
+
       onSuccess?.();
     } catch (error) {
       Toast.show({
@@ -205,10 +247,6 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: 'red',
-  },
-  error: {
-    color: 'red',
-    fontSize: 12,
   },
 });
 
