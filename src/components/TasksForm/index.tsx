@@ -15,6 +15,7 @@ import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { TaskPriority, TaskStatus } from '../../types/Task';
 import { COLORS } from '../../theme/palette';
+import api from '../../services/api.tsx';
 
 const { width } = Dimensions.get('window');
 
@@ -116,7 +117,11 @@ export function TaskForm({ initialData, onSuccess, onCancel }: Props) {
     }
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (initialData?.id) {
+        await api.patch(`/tasks/${initialData.id}`, data);
+      } else {
+        await api.post('/tasks', data);
+      }
 
       Alert.alert(
         'Sucesso',
@@ -126,6 +131,7 @@ export function TaskForm({ initialData, onSuccess, onCancel }: Props) {
         [{ text: 'OK', onPress: onSuccess }],
       );
     } catch (error) {
+      console.error('Erro ao salvar tarefa:', error);
       Alert.alert(
         'Erro',
         'Ocorreu um erro ao salvar a tarefa. Tente novamente.',
