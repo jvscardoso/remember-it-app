@@ -8,6 +8,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -34,7 +35,9 @@ export default function Tasks() {
   const navigation = useNavigation<any>();
   const { isOnline } = useNetworkSync();
 
-  /** Busca tarefas (online ou offline) */
+  const fabScale = new Animated.Value(1);
+  const syncOpacity = new Animated.Value(0);
+
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     try {
@@ -85,6 +88,11 @@ export default function Tasks() {
       }
     } catch (error) {
       console.warn('Erro ao buscar tarefas:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Erro ao carregar tarefas',
+        text2: 'Verifique sua conexão e tente novamente'
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -93,17 +101,31 @@ export default function Tasks() {
 
   const syncTasks = useCallback(async () => {
     if (!isOnline) {
-      Alert.alert('Aviso', 'Conecte-se à internet para sincronizar.');
+      Alert.alert(
+        'Sem conexão',
+        'Conecte-se à internet para sincronizar suas tarefas.',
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
 
     try {
       setSyncing(true);
+      Animated.timing(syncOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+
       const db = await getDBConnection();
       const unsyncedTasks = await getUnsyncedTasks(db);
 
       if (unsyncedTasks.length === 0) {
-        Toast.show({ type: 'info', text1: 'Tudo sincronizado!' });
+        Toast.show({
+          type: 'info',
+          text1: 'Tudo sincronizado!',
+          text2: 'Suas tarefas estão atualizadas'
+        });
         return;
       }
 
@@ -122,14 +144,27 @@ export default function Tasks() {
         }
       }
 
-      Toast.show({ type: 'success', text1: 'Sincronização concluída!' });
+      Toast.show({
+        type: 'success',
+        text1: 'Sincronização concluída!',
+        text2: `${unsyncedTasks.length} tarefa(s) sincronizada(s)`
+      });
       await fetchTasks();
     } catch (error) {
-      Alert.alert('Erro', 'Falha na sincronização.');
+      Alert.alert(
+        'Erro na sincronização',
+        'Não foi possível sincronizar suas tarefas. Tente novamente.',
+        [{ text: 'OK', style: 'default' }]
+      );
     } finally {
       setSyncing(false);
+      Animated.timing(syncOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [isOnline, fetchTasks]);
+  }, [isOnline, fetchTasks, syncOpacity]);
 
   useEffect(() => {
     fetchTasks();
@@ -140,14 +175,62 @@ export default function Tasks() {
     fetchTasks();
   };
 
-  const renderItem = ({ item }: { item: TasksTypes }) => (
-    <TouchableOpacity
-      onPress={() => navigation.navigate('TaskDetails', { id: item.id })}
-      style={styles.taskContainer}
-    >
-      <TaskItem task={item} onTaskCompleted={fetchTasks} />
-    </TouchableOpacity>
+  const handleFabPress = () => {
+    Animated.sequence([
+      Animated.timing(fabScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fabScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    navigation.navigate('TaskForm');
+  };
+
+  const renderItem = ({ item }: { item: TasksTypes; index: number }) => (
+    <View style={styles.taskWrapper}>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('TaskDetails', { id: item.id })}
+        activeOpacity={0.7}
+      >
+        <TaskItem task={item} onTaskCompleted={fetchTasks} />
+      </TouchableOpacity>
+    </View>
   );
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconContainer}>
+        <Text style={styles.emptyIcon}>📝</Text>
+      </View>
+      <Text style={styles.emptyTitle}>Nenhuma tarefa ainda</Text>
+      <Text style={styles.emptySubtitle}>
+        Comece criando sua primeira tarefa tocando no botão +
+      </Text>
+    </View>
+  );
+
+  const renderLoadingState = () => (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#6366F1" />
+      <Text style={styles.loadingText}>Carregando tarefas...</Text>
+    </View>
+  );
+
+  const getTaskStats = () => {
+    const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+    const pending = tasks.filter(t => t.status === 'PENDING').length;
+    const inProgress = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+
+    return { completed, pending, inProgress, total: tasks.length };
+  };
+
+  const stats = getTaskStats();
 
   return (
     <View style={styles.container}>
@@ -158,69 +241,212 @@ export default function Tasks() {
         onSync={syncTasks}
       />
 
-      {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
+      {!loading && tasks.length > 0 && (
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: '#10B981' }]}>{stats.completed}</Text>
+            <Text style={styles.statLabel}>Concluídas</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: '#3B82F6' }]}>{stats.inProgress}</Text>
+            <Text style={styles.statLabel}>Em Progresso</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: '#8B5CF6' }]}>{stats.pending}</Text>
+            <Text style={styles.statLabel}>Pendentes</Text>
+          </View>
+        </View>
+      )}
 
-      {!loading &&
-        (tasks.length === 0 ? (
-          <Text style={styles.empty}>Nenhuma tarefa encontrada.</Text>
+      {syncing && (
+        <Animated.View style={[styles.syncContainer, { opacity: syncOpacity }]}>
+          <ActivityIndicator size="small" color="#6366F1" />
+          <Text style={styles.syncText}>Sincronizando tarefas...</Text>
+        </Animated.View>
+      )}
+
+      <View style={styles.content}>
+        {loading ? (
+          renderLoadingState()
+        ) : tasks.length === 0 ? (
+          renderEmptyState()
         ) : (
           <FlatList
             data={tasks}
             keyExtractor={item => item.id}
             renderItem={renderItem}
-            contentContainerStyle={{ padding: 16 }}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
+                colors={['#6366F1']}
+                tintColor="#6366F1"
+                progressBackgroundColor="#FFFFFF"
               />
             }
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
-        ))}
+        )}
+      </View>
 
-      {syncing && (
-        <Text style={{ textAlign: 'center', marginBottom: 8, color: '#666' }}>
-          Sincronizando...
-        </Text>
-      )}
-
-      <TouchableOpacity
-        onPress={() => navigation.navigate('TaskForm')}
-        style={styles.fab}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
+      <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={handleFabPress}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.fabIcon}>+</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  empty: {
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  content: {
+    flex: 1,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
     textAlign: 'center',
-    marginTop: 50,
+  },
+  syncContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF2FF',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  syncText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#4338CA',
+    fontWeight: '500',
+  },
+  listContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 100,
+  },
+  taskWrapper: {
+    marginBottom: 2,
+  },
+  separator: {
+    height: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    color: '#888',
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 60,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyIcon: {
+    fontSize: 32,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
   },
   fab: {
     position: 'absolute',
     right: 24,
     bottom: 32,
-    backgroundColor: '#007AFF',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  },
+  fabButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#6366F1',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
+    shadowColor: '#6366F1',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  fabText: {
-    color: '#fff',
-    fontSize: 28,
-    marginBottom: 2,
-  },
-  taskContainer: {
-    position: 'relative',
-    marginBottom: 16,
+  fabIcon: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '300',
+    lineHeight: 32,
   },
 });

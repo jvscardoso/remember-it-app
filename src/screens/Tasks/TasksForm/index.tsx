@@ -2,8 +2,8 @@ import React from 'react';
 import { View } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { TasksTypes } from '../../../types/task';
-import TaskForm from '../../../components/TasksForm';
 import Header from '../../../components/Header';
+import { TaskForm } from '../../../components/TasksForm';
 
 export default function TaskFormScreen() {
   const route = useRoute();
